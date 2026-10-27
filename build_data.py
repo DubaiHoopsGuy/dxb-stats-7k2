@@ -307,6 +307,8 @@ def main():
         "league_cx": components(lg, lsecs, ln),
         "teams": [], "timelines": timelines,
         "next": [{"gc": g["gameCode"], "round": g["round"], "date": g["utcDate"], "home": g["local"]["club"]["code"], "away": g["road"]["club"]["code"]} for g in upcoming[:40]],
+        "schedule": [{"gc": g["gameCode"], "round": g["round"], "date": g["utcDate"], "home": g["local"]["club"]["code"], "away": g["road"]["club"]["code"],
+                      "played": bool(g["played"]) and g["gameCode"] in timelines} for g in sorted(games, key=lambda g: g["utcDate"])],
     }
     for c, T in sorted(tot.items()):
         if not T["n"]:

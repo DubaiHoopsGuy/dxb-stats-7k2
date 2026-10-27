@@ -208,6 +208,10 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .smp{font-size:.7rem;text-transform:uppercase;letter-spacing:.04em;opacity:.75}
 .agev{font-size:.72rem;color:var(--bar-muted)}
 .hsticky{box-shadow:0 1px 0 var(--rule)}
+.meets{display:flex;gap:6px;margin-top:8px;overflow-x:auto;scrollbar-width:none}
+.meets button{flex:0 0 auto;font:inherit;font-size:.75rem;font-weight:600;color:var(--bar-muted);background:rgba(255,255,255,.1);border:0;border-radius:999px;padding:5px 10px;min-height:30px;cursor:pointer}
+.meets button[aria-pressed=true]{background:var(--bar-ink);color:var(--bar)}
+.sched{padding:18px 16px} .sched .r{font-size:.8rem;color:var(--muted)} .sched .st1{font-size:1.25rem;font-weight:750;margin-top:2px} .sched .st2{font-size:1.6rem;font-weight:750;color:var(--dub);margin:4px 0 2px;font-variant-numeric:tabular-nums}
 .gro .gm{color:var(--muted);font-size:.8rem}
 .frow.go{cursor:pointer;border-radius:0}
 .frow.go:hover{background:var(--n)}
@@ -281,7 +285,8 @@ function rank(code, side, m){
 let ELAPSED = (20 * 60 + 5 * 60 + 48) / 2400; // Q3 04:12 left = 25:48 played
 // sample live game: Dubai and opponent numbers tonight
 function liveFor(opp){
-  const L = liveGame(opp), cd = counters(L.dub), co = counters(L.opp), out = {dub: {}, opp: {}};
+  const L = liveGame(opp); if (!L) return null;
+  const cd = counters(L.dub), co = counters(L.opp), out = {dub: {}, opp: {}};
   KPIS.forEach(m => { out.dub[m.k] = VAL[m.k](cd, L.end) ?? 0; out.opp[m.k] = VAL[m.k](co, L.end) ?? 0; });
   return out;
 }
@@ -510,52 +515,65 @@ function parseBundle(b){
   const started = ev[A].length + ev[B].length > 0;
   return {A, B, end: Math.max(end, 1), ev, stints: st, final, started};
 }
-let LIVE_REAL = null, LIVE_STATUS = "idle", LIVE_AT = 0, LIVE_TIMER = null, LIVE_FAIL = 0;
-const LIVE_GC = (() => { const q = new URLSearchParams(location.search).get("livegame"); return q ? +q : NEXT ? NEXT.gc : null; })();
+// Live game tab, for the selected meeting with this opponent:
+// played -> the full 40 minutes from the season data; in progress -> EuroLeague's live feed; not played -> schedule only.
+const SCHED = DATA.schedule || [...T[DUB].games.map(g => ({gc: g.gc, round: g.round, date: g.date, home: g.home ? DUB : g.oppCode, away: g.home ? g.oppCode : DUB, played: true})), ...DATA.next.map(g => ({...g, played: false}))];
+const meetings = oc => SCHED.filter(g => (g.home === DUB && g.away === oc) || (g.away === DUB && g.home === oc)).sort((a, b) => a.date.localeCompare(b.date));
+function pickMeeting(oc){
+  const ms = meetings(oc); if (!ms.length) return null;
+  if (st.liveGc){ const s = ms.find(g => g.gc === st.liveGc); if (s) return s; }
+  const soon = ms.find(g => !g.played && new Date(g.date) - Date.now() < 18 * 3600e3); // today's game, or one in progress
+  if (soon) return soon;
+  const done = ms.filter(g => g.played);
+  return done.length ? done[done.length - 1] : ms[0];
+}
+const FEED = {}; // game code -> game from the live feed
+let LIVE_STATUS = "idle", LIVE_AT = 0, LIVE_TIMER = null, LIVE_FAIL = 0;
+const TEST_GC = +(new URLSearchParams(location.search).get("livegame") || 0);
+const feedLive = G => !!(G && FEED[G.gc] === G && !G.final);
 async function pollLive(){
   clearTimeout(LIVE_TIMER);
-  if (!LIVE_GC || st.mode !== "live") return;
+  if (st.mode !== "live") return;
+  const mt = pickMeeting(st.opp), gc = TEST_GC || (mt && mt.gc);
+  const due = TEST_GC || (mt && !mt.played && Date.now() >= new Date(mt.date) - 15 * 60e3);
+  if (!gc || !due || (FEED[gc] && FEED[gc].final)){ LIVE_TIMER = setTimeout(pollLive, 60000); return; } // look again in a minute: tip-off may arrive
   if (document.hidden){ LIVE_TIMER = setTimeout(pollLive, 30000); return; }
   try {
-    const r = await fetch(`https://statssupercup.euroleague.net/api/bundle?gamecode=${LIVE_GC}&seasoncode=${META.season}`, {cache: "no-store"});
+    const r = await fetch(`https://statssupercup.euroleague.net/api/bundle?gamecode=${gc}&seasoncode=${META.season}`, {cache: "no-store"});
     if (!r.ok) throw new Error("HTTP " + r.status);
     const g = parseBundle(await r.json());
     if (g && g.started && (g.A === DUB || g.B === DUB)){
       const oc = g.A === DUB ? g.B : g.A;
-      LIVE_REAL = {end: g.end, live: true, real: true, final: g.final, oppCode: oc, stD: g.stints[DUB], stO: g.stints[oc], dub: g.ev[DUB], opp: g.ev[oc]};
-      LIVE_T = g.end; ELAPSED = g.end / 2400; LIVE_STATUS = g.final ? "final" : "live"; st.opp = oc;
+      FEED[gc] = {gc, meet: mt, end: g.end, live: true, real: true, final: g.final, oppCode: oc, stD: g.stints[DUB], stO: g.stints[oc], dub: g.ev[DUB], opp: g.ev[oc]};
+      LIVE_STATUS = g.final ? "final" : "live";
     } else LIVE_STATUS = "pre";
     LIVE_AT = Date.now(); LIVE_FAIL = 0;
-  } catch (err){ LIVE_FAIL++; if (!LIVE_REAL) LIVE_STATUS = "error"; }
+  } catch (err){ LIVE_FAIL++; if (!FEED[gc]) LIVE_STATUS = "error"; }
   if (st.mode === "live"){ const y = scrollY; render(); scrollTo(0, y); }
-  if (LIVE_STATUS !== "final") LIVE_TIMER = setTimeout(pollLive, Math.min(240000, 30000 * 2 ** LIVE_FAIL));
+  if (!(FEED[gc] && FEED[gc].final)) LIVE_TIMER = setTimeout(pollLive, Math.min(240000, 30000 * 2 ** LIVE_FAIL));
 }
 document.addEventListener("visibilitychange", () => { if (!document.hidden && st.mode === "live") pollLive(); });
 setInterval(() => { const el = document.querySelector(".agev"); if (el) el.textContent = liveAge(); }, 5000);
 function liveAge(){ if (!LIVE_AT) return ""; const s = Math.round((Date.now() - LIVE_AT) / 1000); return s < 60 ? `updated ${s}s ago` : `updated ${Math.round(s / 60)} min ago`; }
 function liveNote(){
-  if (LIVE_STATUS === "live") return "Live from the EuroLeague feed, refreshing every 30 seconds.";
-  if (LIVE_STATUS === "final") return "Final score from the EuroLeague feed.";
-  if (LIVE_STATUS === "pre") return `Sample data: the live feed starts at tip-off${NEXT ? " (" + fmtWhen(NEXT.date) + ")" : ""}.`;
-  if (LIVE_STATUS === "error") return "Sample data: the live feed can’t be reached from here (it works on the hosted site).";
-  return "Sample data until the live feed connects.";
+  const G = liveGame(st.opp), mt = pickMeeting(st.opp);
+  if (feedLive(G)) return " Live from the EuroLeague feed, refreshing every 30 seconds.";
+  if (G) return " Completed game: full 40 minutes.";
+  if (LIVE_STATUS === "error") return " The live feed can’t be reached from here (it works on the hosted site).";
+  return mt ? ` Not played yet: ${fmtWhen(mt.date)}.` : "";
 }
-
-// live sample game against the selected opponent (cached), used only when there is no live feed
-const LIVE = {};
+const liveWord = () => { const G = liveGame(st.opp); return feedLive(G) || (G && G.meet && Math.abs(new Date(G.meet.date) - Date.now()) < 18 * 3600e3) ? "tonight" : "in game"; };
 function liveGame(oc){
-  if (LIVE_REAL && LIVE_REAL.oppCode === oc) return LIVE_REAL;
-  if (LIVE[oc]) return LIVE[oc];
-  const D = T[DUB], O = T[oc], f = rng(hash("live" + oc)), end = LIVE_T;
-  const mix = (a, b) => Object.fromEntries(KPIS.map(m => [m.k, (a[m.k] + b[m.k]) / 2]));
-  const stD = makeStints(D.roster.slice(0, 11), end, f), stO = makeStints(O.roster, end, f);
-  const atD = t => onCourt(stD, t, end), atO = t => onCourt(stO, t, end);
-  const dub = sortEv(simSide(end, mix(D.off, O.def), f, atD, atO)), opp = sortEv(simSide(end, mix(O.off, D.def), f, atO, atD));
-  return LIVE[oc] = {end, live: true, stD, stO, dub, opp};
+  const mt = pickMeeting(oc); if (!mt) return null;
+  if (FEED[mt.gc]) return FEED[mt.gc];
+  const tl = DATA.timelines[mt.gc];
+  if (mt.played && tl) return {gc: mt.gc, meet: mt, end: tl.end, live: true, real: true, final: true, oppCode: oc, stD: tl.stints[DUB], stO: tl.stints[oc], dub: tl.ev[DUB], opp: tl.ev[oc]};
+  return null; // not played yet
 }
+function syncClock(G){ if (G){ LIVE_T = G.end; ELAPSED = G.end / 2400; } }
 // a game seen from one team: stints for that team, its attack ("off") and the attack against it ("def")
 function gameView(code, round, live, oc){
-  if (live){ const L = liveGame(oc), dub = code === DUB; return {live: true, end: L.end, stints: dub ? L.stD : L.stO, ev: {off: dub ? L.dub : L.opp, def: dub ? L.opp : L.dub}, opp: dub ? T[oc].name : "Dubai", score: dub ? `${ptsOf(L.dub)}–${ptsOf(L.opp)}` : `${ptsOf(L.opp)}–${ptsOf(L.dub)}`}; }
+  if (live){ const L = liveGame(oc), dub = code === DUB; return {live: true, final: L.final, feed: feedLive(L), round: L.meet && L.meet.round, end: L.end, stints: dub ? L.stD : L.stO, ev: {off: dub ? L.dub : L.opp, def: dub ? L.opp : L.dub}, opp: dub ? T[oc].name : "Dubai", score: dub ? `${ptsOf(L.dub)}–${ptsOf(L.opp)}` : `${ptsOf(L.opp)}–${ptsOf(L.dub)}`}; }
   const g = T[code].games.find(x => x.round === round);
   return {live: false, end: g.end, stints: g.stints, ev: g.ev, opp: g.opp, score: g.score, win: g.win, round, g};
 }
@@ -603,28 +621,44 @@ addEventListener("resize", fixSticky);
 
 function topBar(){
   const O = T[st.opp];
-  const sel = h("select", {"aria-label": "Opponent", onchange: e => { st.opp = e.target.value; render(); }},
+  const sel = h("select", {"aria-label": "Opponent", onchange: e => { st.opp = e.target.value; st.liveGc = null; render(); if (st.mode === "live") pollLive(); }},
     teams.filter(t => t.code !== DUB).sort((a, b) => a.name.localeCompare(b.name)).map(t => { const o = h("option", {value: t.code, text: t.name}); if (t.code === st.opp) o.selected = true; return o; }));
-  const live = st.mode === "live";
+  const live = st.mode === "live", LG = live ? liveGame(st.opp) : null, MS = live ? meetings(st.opp) : [], MT = live ? pickMeeting(st.opp) : null;
   return h("header", {class: "bar"},
     h("div", {class: "match"},
       h("div", {class: "teams"}, "Dubai", h("span", {style: "font-weight:400;opacity:.7", text: "v"}), sel),
       h("div", {class: "state"}, live
-        ? [h("b", {text: `${ptsOf(liveGame(st.opp).dub)}–${ptsOf(liveGame(st.opp).opp)}`}), h("span", null, LIVE_STATUS === "live" ? h("i", {class: "live-dot", "aria-hidden": "true"}) : null, LIVE_STATUS === "final" ? "Final" : clk(LIVE_T), LIVE_REAL ? null : h("span", {class: "smp", text: " sample"})), LIVE_AT ? h("span", {class: "agev", style: "display:block", text: liveAge()}) : null]
+        ? (LG ? [h("b", {text: `${ptsOf(LG.dub)}–${ptsOf(LG.opp)}`}), h("span", null, feedLive(LG) ? h("i", {class: "live-dot", "aria-hidden": "true"}) : null, LG.final ? "Final" : clk(LG.end)), feedLive(LG) && LIVE_AT ? h("span", {class: "agev", style: "display:block", text: liveAge()}) : null]
+              : [h("b", {text: "–"}), h("span", {text: "Not played"})])
         : [h("b", {text: `${T[DUB].w}–${T[DUB].l}`}), h("span", {text: `${O.name} ${O.w}–${O.l}`})])),
     !live && NEXT && NEXT.code === st.opp ? h("div", {class: "nextl", text: `Next game: ${fmtWhen(NEXT.date)} (Dubai time), ${NEXT.home === DUB ? "home" : "away"}`}) : null,
+    live && MS.length > 1 ? h("div", {class: "meets", role: "group", "aria-label": "Game"}, MS.map(g => h("button", {"aria-pressed": String(MT && g.gc === MT.gc), onclick: () => { st.liveGc = g.gc; render(); pollLive(); },
+      text: `R${g.round} ${g.home === DUB ? "home" : "away"} · ${g.played ? "played" : fmtWhen(g.date).split(" ").slice(0, 3).join(" ")}`}))) : null,
     h("div", {class: "seg", role: "group", "aria-label": "View"},
       [["season", "Season"], ["live", "Live game"]].map(([id, lab]) => h("button", {"aria-pressed": String(st.mode === id), onclick: () => { st.mode = id; render(); if (id === "live") pollLive(); }, text: lab}))));
 }
 
 function summary(){
-  const live = st.mode === "live", O = T[st.opp], D = T[DUB], L = live ? liveFor(st.opp) : null;
-  const oc = st.opp;
+  const live = st.mode === "live", O = T[st.opp], D = T[DUB], oc = st.opp;
+  if (live){
+    const G = liveGame(oc);
+    if (!G){
+      const mt = pickMeeting(oc);
+      return h("div", null, h("div", {class: "frozen"}, topBar()),
+        h("div", {class: "sec"}, h("div", {class: "card sched"},
+          h("div", {class: "r", text: mt ? `Round ${mt.round} · ${mt.home === DUB ? "home" : "away"}` : ""}),
+          h("div", {class: "st1", text: mt ? (mt.home === DUB ? `Dubai v ${T[oc].name}` : `${T[oc].name} v Dubai`) : `No game v ${T[oc].name} scheduled`}),
+          mt ? h("div", {class: "st2", text: fmtWhen(mt.date)}) : null,
+          h("p", {class: "note", text: mt ? (LIVE_STATUS === "error" ? "Dubai time. The live feed can’t be reached from here; it works on the hosted site." : "Dubai time. Not played yet: live numbers appear here from tip-off.") : ""}))));
+    }
+    syncClock(G);
+  }
+  const L = live ? liveFor(st.opp) : null;
   const grid = h("div", {class: "grid", role: "table", "aria-label": "Key numbers"});
   const heads = h("div", {class: "grid heads"},
     h("div", {class: "gh o", text: "Offense"}), h("div", {class: "gap"}), h("div", {class: "gh d", text: "Defense"}),
-    h("div", {class: "ch", text: live ? "Dubai tonight" : "Dubai"}), h("div", {class: "ch", text: `${oc} allows`}), h("div", {class: "gap"}),
-    h("div", {class: "ch", text: live ? `${oc} tonight` : oc}), h("div", {class: "ch", text: "Dubai allows"}));
+    h("div", {class: "ch", text: live ? "Dubai " + liveWord() : "Dubai"}), h("div", {class: "ch", text: `${oc} allows`}), h("div", {class: "gap"}),
+    h("div", {class: "ch", text: live ? `${oc} ${liveWord()}` : oc}), h("div", {class: "ch", text: "Dubai allows"}));
   const flags = [];
   KPIS.forEach(m => {
     grid.append(h("div", {class: "rl", text: m.label}));
@@ -658,7 +692,7 @@ function summary(){
   return h("div", null, h("div", {class: "frozen"}, topBar(), alert), insightBox(summaryInsights(oc, live)), h("div", {class: "frozen hsticky"}, heads), grid,
     h("div", {class: "key"}, "Bad for Dubai", ["t-2","t-1","t0","t1","t2"].map(c => h("i", {class: c})), "Good for Dubai"),
     h("p", {class: "foot", text: live
-      ? "Tonight’s numbers v what usually happens. ▲▼ is the difference (for second-chance points, v the usual total by this point)." + liveNote()
+      ? "Game numbers v what usually happens. ▲▼ is the difference (for second-chance points, v the usual total by this point)." + liveNote()
       : `Small number is league rank (1st is best). EuroLeague data through Round ${META.through_round}, updated ${fmtWhen(META.updated)}.`}),
     h("p", {class: "foot", style: "padding-top:0"}, h("button", {class: "mlink", onclick: () => { st.detail = {method: true}; render(); scrollTo(0, 0); }, text: "How these numbers are calculated"})));
 }
@@ -833,6 +867,8 @@ const PMODE = {off: {ortg: "points per possession used ×100", efg: "player eFG%
 function gameScreen(){
   const {k, col, from} = st.detail, oc = st.opp, C = colsFor(oc)[col], m = K_(k), cfg = KC[k];
   const live = !!st.detail.live, team = T[C.code];
+  if (live && !liveGame(oc)){ st.detail = null; return summary(); }
+  if (live) syncClock(liveGame(oc));
   const G = gameView(C.code, st.detail.round, live, oc), side = C.side, ev = G.ev[side], end = G.end;
   const gi = live ? -1 : team.games.findIndex(x => x.round === st.detail.round);
   const isDub = C.code === DUB, cs = isDub ? 1 : -1; // counts that are good for this team are good for Dubai when the team is Dubai
@@ -849,9 +885,9 @@ function gameScreen(){
       h("button", {class: "back", onclick: back, text: backLab}),
       h("div", {class: "gnav"},
         live ? null : h("button", {class: "rnav", "aria-label": "Previous game", onclick: () => team.games[gi - 1] && go({round: team.games[gi - 1].round, sel: gi - 1}), text: "‹"}),
-        h("div", {class: "dtitle", text: `${ABBR[k]}${whoTitle} – ${live ? "LIVE" : "R" + G.round} v ${G.opp}`}),
+        h("div", {class: "dtitle", text: `${ABBR[k]}${whoTitle} – ${live ? (G.feed ? "LIVE" : "R" + G.round) : "R" + G.round} v ${G.opp}`}),
         live ? null : h("button", {class: "rnav", "aria-label": "Next game", onclick: () => team.games[gi + 1] && go({round: team.games[gi + 1].round, sel: gi + 1}), text: "›"})),
-      h("div", {class: "gsub"}, live ? [h("i", {class: "live-dot", "aria-hidden": "true"}), `${LIVE_STATUS === "final" ? "Final" : clk(end)}, ${isDub ? "Dubai" : T[oc].name} ${G.score}`] : `${G.win ? "Won" : "Lost"} ${G.score}`)),
+      h("div", {class: "gsub"}, live ? [G.feed ? h("i", {class: "live-dot", "aria-hidden": "true"}) : null, `${G.final ? "Final" : clk(end)}, ${isDub ? "Dubai" : T[oc].name} ${G.score}`] : `${G.win ? "Won" : "Lost"} ${G.score}`)),
     h("div", {class: "chips"}, GK.map(x => h("button", {"aria-pressed": String(x === k), onclick: () => go({k: x}), text: ABBR[x]}))));
   if (!live){ const nb = head.querySelectorAll(".rnav"); nb[0].disabled = gi <= 0; nb[1].disabled = gi >= team.games.length - 1; }
 
@@ -895,7 +931,7 @@ function gameScreen(){
 
   function showReadout(t){
     const s = t == null ? series[series.length - 1] : at(t);
-    readout.replaceChildren(h("span", {class: "gt2", text: t == null ? (live ? "So far" : "Full game") : clk(t)}),
+    readout.replaceChildren(h("span", {class: "gt2", text: t == null ? (live && !G.final ? "So far" : "Full game") : clk(t)}),
       h("span", {class: "gv"}, h("b", {text: s ? fmtV(s.v) : "–"}), h("small", {text: s ? " " + cfg.det(s.c) : ""})),
       (() => { const z = t == null ? (mser[mser.length - 1] || {us: 0, them: 0, m: 0}) : mAt(t); return h("span", {class: "gm"}, h("i", {class: "mkey"}), `${z.us}–${z.them} (${z.m > 0 ? "+" : z.m < 0 ? "−" : ""}${Math.abs(z.m)})`); })());
   }
@@ -1138,7 +1174,8 @@ function detail(){
   if (st.detail.method) return methodScreen();
   if (st.detail.round || st.detail.live) return gameScreen();
   const {k, col} = st.detail, m = KPIS.find(x => x.k === k), oc = st.opp, cols = colsFor(oc), C = cols[col], t = T[C.code];
-  const pair = cols[[1, 0, 3, 2][col]], live = st.mode === "live" && (col === 0 || col === 2);
+  const LG = st.mode === "live" ? liveGame(oc) : null; syncClock(LG);
+  const pair = cols[[1, 0, 3, 2][col]], live = !!LG && (col === 0 || col === 2);
   const L = live ? liveFor(oc) : null;
   const seasonVal = t[C.side][k], lgAvg = leagueAvg(C.side, k), pairVal = T[pair.code][pair.side][k];
   const r = rank(C.code, C.side, m);
@@ -1161,7 +1198,7 @@ function detail(){
   }
   const hero = h("div", {class: "sec hero"},
     h("div", {class: "tile " + (heroG == null ? "t0" : "t" + heroG)},
-      h("span", {class: "r", text: live ? C.name + " tonight" : k === "ortg" ? [`Dubai ORTG`, `${oc} ORTG allowed`, `${oc} ORTG`, `Dubai ORTG allowed`][col] : C.long}),
+      h("span", {class: "r", text: live ? C.name + " " + liveWord() : k === "ortg" ? [`Dubai ORTG`, `${oc} ORTG allowed`, `${oc} ORTG`, `Dubai ORTG allowed`][col] : C.long}),
       h("span", {class: "v", text: live && k === "scp" ? String(heroVal) : m.fmt(heroVal)}),
       h("span", {class: "r", text: heroSub})),
     h("div", {class: "refs"},
@@ -1177,7 +1214,7 @@ function detail(){
     const q = QI.map(i => { const a = i * 600, b = Math.min(LIVE_T, a + 600); return VAL[k](counters(LE.filter(e => e.t >= a && e.t < b)), b - a) ?? 0; });
     const LV = gameView(C.code, null, true, oc), qm = QI.map(i => { const a = i * 600, b = a + 600, inq = e => e.t >= a && e.t < b; return ptsOf(LV.ev.off.filter(inq)) - ptsOf(LV.ev.def.filter(inq)); });
     const ref = k === "scp" ? pairVal / 4 : pairVal;
-    out.push(h("div", {class: "sec"}, h("h3", {text: "Tonight by quarter"}), h("div", {class: "card"},
+    out.push(h("div", {class: "sec"}, h("h3", {text: liveWord() === "tonight" ? "Tonight by quarter" : "By quarter"}), h("div", {class: "card"},
       barsChart(q.map((v, i) => ({label: "Q" + (i + 1), mg: qm[i], sub: i === nQ - 1 && LIVE_STATUS !== "final" ? "so far" : "", value: v, partial: i === nQ - 1 && LIVE_STATUS !== "final", cls: "f" + (gradeVs(v, ref, col, m) ?? "N")})), k === "scp" ? (v => String(Math.round(v))) : m.fmt, [{v: ref}], () => { st.detail = {k, col, live: true, from: k}; render(); scrollTo(0, 0); }),
       legendLines([{label: pair.name, txt: (k === "scp" ? "per quarter " : "") + m.fmt(ref)}]))));
   }
@@ -1233,6 +1270,7 @@ function detail(){
 const HASH = location.hash.toLowerCase();
 if (HASH === "#ortg") st.detail = {k: "ortg", col: 0};
 if (HASH === "#live") st.mode = "live";
+if (TEST_GC){ const g = SCHED.find(x => x.gc === TEST_GC); if (g){ st.mode = "live"; st.opp = g.home === DUB ? g.away : g.home; st.liveGc = TEST_GC; } }
 if (HASH === "#efg") st.detail = {k: "efg", col: 0, round: 4, sel: 3, from: "ortg"};
 if (HASH === "#tov") st.detail = {k: "tov", col: 0, round: 4, sel: 3, from: "ortg"};
 render();
