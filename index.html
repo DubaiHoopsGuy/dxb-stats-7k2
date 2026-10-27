@@ -213,6 +213,8 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .meets button[aria-pressed=true]{background:var(--bar-ink);color:var(--bar)}
 .sched{padding:18px 16px} .sched .r{font-size:.8rem;color:var(--muted)} .sched .st1{font-size:1.25rem;font-weight:750;margin-top:2px} .sched .st2{font-size:1.6rem;font-weight:750;color:var(--dub);margin:4px 0 2px;font-variant-numeric:tabular-nums}
 .gro .gm{color:var(--muted);font-size:.8rem}
+.gseg{margin:2px 10px 0}
+.bar .gseg{margin:10px 0 0}
 .frow.go{cursor:pointer;border-radius:0}
 .frow.go:hover{background:var(--n)}
 .frow .s small{display:block;font-size:.66rem;font-weight:500;color:var(--muted)}
@@ -681,7 +683,7 @@ function summary(){
       } else g = gradeRank(r, col, m);
       const cls = g === "flat" ? "tile flat" : g == null ? "tile t0" : "tile t" + g;
       const who = col === 0 ? "Dubai offense" : col === 1 ? `${oc} defense` : col === 2 ? `${oc} offense` : "Dubai defense";
-      grid.append(h("button", {class: cls, "aria-label": `${m.label}, ${who}: ${m.fmt(val)}, ${sub}`, onclick: () => { st.detail = live && (col === 0 || col === 2) ? {k: m.k, col, live: true} : {k: m.k, col}; render(); scrollTo(0, 0); }},
+      grid.append(h("button", {class: cls, "aria-label": `${m.label}, ${who}: ${m.fmt(val)}, ${sub}`, onclick: () => { st.detail = live ? {k: m.k, col, live: true} : {k: m.k, col}; render(); scrollTo(0, 0); }},
         h("span", {class: "v", text: live && m.k === "scp" && (col === 0 || col === 2) ? String(val) : m.fmt(val)}), h("span", {class: "r", text: sub})));
     });
   });
@@ -865,8 +867,12 @@ const PMODE = {off: {ortg: "points per possession used ×100", efg: "player eFG%
   def: {tov: "steals", orb: "player share of defensive rebounds", ftr: "fouls leading to free throws"}};
 
 function gameScreen(){
-  const {k, col, from} = st.detail, oc = st.opp, C = colsFor(oc)[col], m = K_(k), cfg = KC[k];
-  const live = !!st.detail.live, team = T[C.code];
+  const {k, col, from} = st.detail, live = !!st.detail.live, m = K_(k), cfg = KC[k];
+  // the opponent that defines the four columns: the other team in this game when Dubai played it
+  let oc = live ? st.opp : (st.detail.go || st.opp);
+  if (!live && (col === 0 || col === 3)){ const g0 = T[DUB].games.find(x => x.round === st.detail.round); if (g0) oc = g0.oppCode; }
+  const C = colsFor(oc)[col], team = T[C.code];
+  const dubGame = live || C.code === DUB || ((team.games.find(x => x.round === st.detail.round) || {}).oppCode === DUB);
   if (live && !liveGame(oc)){ st.detail = null; return summary(); }
   if (live) syncClock(liveGame(oc));
   const G = gameView(C.code, st.detail.round, live, oc), side = C.side, ev = G.ev[side], end = G.end;
@@ -884,15 +890,18 @@ function gameScreen(){
     h("header", {class: "bar dbar"},
       h("button", {class: "back", onclick: back, text: backLab}),
       h("div", {class: "gnav"},
-        live ? null : h("button", {class: "rnav", "aria-label": "Previous game", onclick: () => team.games[gi - 1] && go({round: team.games[gi - 1].round, sel: gi - 1}), text: "‹"}),
+        live ? null : h("button", {class: "rnav", "aria-label": "Previous game", onclick: () => team.games[gi - 1] && go({round: team.games[gi - 1].round, sel: gi - 1, go: C.code === DUB ? undefined : C.code}), text: "‹"}),
         h("div", {class: "dtitle", text: `${ABBR[k]}${whoTitle} – ${live ? (G.feed ? "LIVE" : "R" + G.round) : "R" + G.round} v ${G.opp}`}),
-        live ? null : h("button", {class: "rnav", "aria-label": "Next game", onclick: () => team.games[gi + 1] && go({round: team.games[gi + 1].round, sel: gi + 1}), text: "›"})),
-      h("div", {class: "gsub"}, live ? [G.feed ? h("i", {class: "live-dot", "aria-hidden": "true"}) : null, `${G.final ? "Final" : clk(end)}, ${isDub ? "Dubai" : T[oc].name} ${G.score}`] : `${G.win ? "Won" : "Lost"} ${G.score}`)),
+        live ? null : h("button", {class: "rnav", "aria-label": "Next game", onclick: () => team.games[gi + 1] && go({round: team.games[gi + 1].round, sel: gi + 1, go: C.code === DUB ? undefined : C.code}), text: "›"})),
+      h("div", {class: "gsub"}, live ? [G.feed ? h("i", {class: "live-dot", "aria-hidden": "true"}) : null, `${G.final ? "Final" : clk(end)}, ${isDub ? "Dubai" : T[oc].name} ${G.score}`] : `${G.win ? "Won" : "Lost"} ${G.score}`),
+      h("div", {class: "seg four gseg", role: "group", "aria-label": "Column"},
+      (dubGame ? [0, 1, 2, 3] : [1, 2]).map(i => h("button", {"aria-pressed": String(i === col), onclick: () => go({col: i, go: oc}),
+        text: colsFor(oc)[i].name + (live && (i === 0 || i === 2) ? " " + liveWord() : "")})))),
     h("div", {class: "chips"}, GK.map(x => h("button", {"aria-pressed": String(x === k), onclick: () => go({k: x}), text: ABBR[x]}))));
   if (!live){ const nb = head.querySelectorAll(".rnav"); nb[0].disabled = gi <= 0; nb[1].disabled = gi >= team.games.length - 1; }
 
   const fmtV = v => v == null ? "–" : k === "scp" ? String(Math.round(v)) : m.fmt(v);
-  const teamLab = side === "off" ? (isDub ? "Dubai" : team.name) : (isDub ? "Opp v Dubai" : `Opp v ${team.name}`);
+  const teamLab = `${(side === "off" ? team : Opp).name} attack`;
   const hero = h("div", {class: "sec g2"},
     h("div", {class: "tile t" + (gradeVs(value, ref, col, m) ?? 0)}, h("span", {class: "r", text: teamLab}), h("span", {class: "v", text: fmtV(value)})),
     h("div", {class: "tile flat"}, h("span", {class: "r", text: k === "scp" ? (live ? "EL avg by now" : "EL avg") : "EL avg"}), h("span", {class: "v", text: fmtV(lg * scale)}),
