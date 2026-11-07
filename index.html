@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0f2a35">
-<title>Dubai team stats</title>
+<title>Dubai team stats (beta)</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Dubai stats">
@@ -45,8 +45,10 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .bar{background:var(--bar);color:var(--bar-ink);padding:10px 14px 12px}
 .match{display:flex;align-items:center;gap:10px}
 .nextl{font-size:.8rem;color:var(--bar-muted);margin-top:4px}
-.match .teams{font-size:1.3rem;font-weight:750;letter-spacing:-.01em;display:flex;align-items:center;gap:6px;flex-wrap:nowrap;min-width:0}
+.match .teams{font-size:1.15rem;font-weight:750;letter-spacing:-.01em;display:flex;align-items:center;gap:6px;flex-wrap:nowrap;min-width:0}
 .match .teams select{min-width:0;max-width:11rem;text-overflow:ellipsis}
+.match .teams .ddw{max-width:10.5rem}
+.match{gap:8px} .match .state{flex:0 0 auto}
 .match select{font:inherit;font-weight:750;color:var(--bar-ink);background:transparent;border:0;border-bottom:2px dashed var(--bar-muted);padding:0 2px;appearance:none;-webkit-appearance:none;cursor:pointer}
 .match select option{color:#15202b}
 .match .state{margin-left:auto;text-align:right;font-variant-numeric:tabular-nums;line-height:1.2}
@@ -248,13 +250,26 @@ body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset
 .kl .nm{font-weight:700;font-size:.92rem;line-height:1.2} .kl .nm small{display:block;font-weight:500;font-size:.7rem;color:var(--muted)}
 .hchip{display:block;text-align:center;border-radius:8px;padding:5px 4px;font-weight:750;font-size:.95rem}
 .hrk{text-align:center;font-weight:800;font-size:1rem;line-height:1.1} .hrk small{display:block;font-size:.62rem;font-weight:600;color:var(--muted)}
-.gstrip{margin-top:6px} .gstrip svg{display:block;width:100%;height:auto;overflow:visible;touch-action:pan-y;cursor:pointer}
+.gstrip{margin-top:6px;position:relative}
+.dpop{position:absolute;bottom:calc(100% - 8px);width:180px;z-index:6;display:flex;flex-direction:column;align-items:flex-start;gap:1px;text-align:left;font:inherit;font-size:.78rem;line-height:1.3;color:var(--bg);background:var(--ink);border:0;border-radius:9px;padding:7px 10px 8px;box-shadow:0 4px 14px rgba(0,0,0,.28);cursor:pointer}
+.dpop::after{content:"";position:absolute;top:100%;left:var(--ax, 50%);transform:translateX(-50%);border:6px solid transparent;border-top-color:var(--ink)}
+.dpop b{font-weight:700} .dpop .dgo{margin-top:3px;font-weight:700;color:var(--opp)} .gstrip svg{display:block;width:100%;height:auto;overflow:visible;touch-action:pan-y;cursor:pointer}
 .gstrip text{font-family:var(--font);font-size:10px;fill:var(--muted)}
 .gstrip .ax{stroke:var(--rule);stroke-width:2;stroke-linecap:round} .gstrip .lgd{fill:var(--muted);opacity:.35}
 .gstrip .el{stroke:var(--muted);stroke-dasharray:2 2} .gstrip .pa{stroke:var(--ink);stroke-width:2} .gstrip .hl{stroke:var(--ink);stroke-width:1;stroke-dasharray:1 2}
 .klg{display:flex;justify-content:space-between;gap:8px;font-size:.76rem;margin-top:2px;font-variant-numeric:tabular-nums;color:var(--muted)}
 .hkey{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:.72rem;color:var(--muted);padding:10px 14px 0} .hkey i{display:inline-block;vertical-align:middle;margin-right:4px}
 @media (min-width:520px){.hhd,.kl{grid-template-columns:1fr 5rem 4rem}}
+.hwrap{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto}
+.beta{font-size:.6rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--bar);background:var(--opp);border-radius:5px;padding:2px 5px;line-height:1.2}
+/* drop-down headers: a visible name with a small triangle, the real <select> laid over it */
+.ddw{position:relative;display:inline-flex;min-width:0;max-width:100%}
+.ddw select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:16px}
+.ddl{display:inline-flex;align-items:center;gap:6px;font-weight:750;border-bottom:2px dashed var(--bar-muted);padding:0 2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ddl > span{overflow:hidden;text-overflow:ellipsis}
+.ddteam{font-size:1.25rem} .ddopp{font-size:inherit}
+.ddtri{flex:0 0 auto;width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid var(--bar-muted);margin-top:2px}
+.ddw:focus-within .ddl{outline:3px solid var(--dub);outline-offset:2px;border-radius:3px}
 .frow.go{cursor:pointer;border-radius:0}
 .frow.go:hover{background:var(--n)}
 .frow .s small{display:block;font-size:.66rem;font-weight:500;color:var(--muted)}
@@ -671,11 +686,11 @@ function topBar(){
   const live = st.mode === "live", LG = live ? liveGame(st.opp) : null, MS = live ? meetings(st.opp) : [], MT = live ? pickMeeting(st.opp) : null;
   return h("header", {class: "bar"},
     h("div", {class: "match"}, homeBtn(),
-      h("div", {class: "teams"}, "Dubai", h("span", {style: "font-weight:400;opacity:.7", text: "v"}), sel),
+      h("div", {class: "teams"}, "Dubai", h("span", {style: "font-weight:400;opacity:.7", text: "v"}), ddWrap(sel, "ddopp")),
       h("div", {class: "state"}, live
         ? (LG ? [h("b", {text: `${ptsOf(LG.dub)}–${ptsOf(LG.opp)}`}), h("span", null, feedLive(LG) ? h("i", {class: "live-dot", "aria-hidden": "true"}) : null, LG.final ? "Final" : clk(LG.end)), feedLive(LG) && LIVE_AT ? h("span", {class: "agev", style: "display:block", text: liveAge()}) : null]
               : [h("b", {text: "–"}), h("span", {text: "Not played"})])
-        : [h("b", {text: `${T[DUB].w}–${T[DUB].l}`}), h("span", {text: `${O.name} ${O.w}–${O.l}`})])),
+        : [h("b", {text: `${T[DUB].w}–${T[DUB].l}`}), h("span", {text: `${O.code} ${O.w}–${O.l}`})])),
     !live && NEXT && NEXT.code === st.opp ? h("div", {class: "nextl", text: `Next game: ${fmtWhen(NEXT.date)} (Dubai time), ${NEXT.home === DUB ? "home" : "away"}`}) : null,
     live && MS.length > 1 ? h("div", {class: "meets", role: "group", "aria-label": "Game"}, MS.map(g => h("button", {"aria-pressed": String(MT && g.gc === MT.gc), onclick: () => { st.liveGc = g.gc; render(); pollLive(); },
       text: `R${g.round} ${g.home === DUB ? "home" : "away"} · ${g.played ? "played" : fmtWhen(g.date).split(" ").slice(0, 3).join(" ")}`}))) : null,
@@ -999,9 +1014,23 @@ function gameScreen(){
     const span = live ? Math.max(2400, end) : end, x0 = left, x1 = W - right, x = t => x0 + (x1 - x0) * t / span;
     let lo, hi, ticks;
     if (cfg.cum){ const top = Math.max(series.length ? series[series.length - 1].v : 0, refFull * end / 2400, 4) * 1.2; lo = 0; hi = Math.ceil(top / 4) * 4; ticks = [0, hi / 4, hi / 2, hi * 3 / 4, hi].map(Math.round); }
-    else { [lo, hi] = cfg.y; ticks = cfg.ticks; }
+    else {
+      // fit the y-axis to the line: ignore the first 3 minutes (rates swing wildly on a handful of plays),
+      // keep the EL average in view, enforce a minimum span so small wobbles aren't magnified, and use round ticks
+      const MIN_SPAN = {ortg: 20, pace: 10, efg: .10, tov: .08, orb: .15, ftr: .20}[k], STEPS = {ortg: [5, 10, 20, 40], pace: [2, 5, 10, 20], efg: [.05, .1, .2], tov: [.02, .05, .1], orb: [.05, .1, .2], ftr: [.05, .1, .2, .4]}[k];
+      const fitV = series.filter(s => s.t >= 180).map(s => s.v);
+      const vals = (fitV.length >= 3 ? fitV : series.map(s => s.v)).concat([refFull]);
+      let a = Math.min(...vals), b = Math.max(...vals);
+      const padv = (b - a) * .08; a -= padv; b += padv;
+      if (b - a < MIN_SPAN){ const mid = (a + b) / 2; a = mid - MIN_SPAN / 2; b = mid + MIN_SPAN / 2; }
+      if (k !== "ortg" && k !== "pace" && a < 0){ b -= a; a = 0; }
+      const step = STEPS.find(s => (b - a) / s <= 5) || STEPS[STEPS.length - 1];
+      lo = Math.floor(a / step + 1e-9) * step; hi = Math.ceil(b / step - 1e-9) * step;
+      if (k !== "ortg" && k !== "pace") lo = Math.max(0, lo);
+      ticks = []; for (let v = lo; v <= hi + step / 2; v += step) ticks.push(+v.toFixed(4));
+    }
     const y = v => 6 + lineH * (1 - (Math.min(hi, Math.max(lo, v)) - lo) / (hi - lo));
-    const tf = v => k === "ortg" || k === "pace" || k === "scp" ? String(v) : k === "ftr" ? v.toFixed(1).replace(/^0/, "") : Math.round(v * 100) + "%";
+    const tf = v => k === "ortg" || k === "pace" || k === "scp" ? String(Math.round(v)) : k === "ftr" ? v.toFixed(2).replace(/^0/, "") : Math.round(v * 100) + "%";
     let svg = `<svg viewBox="0 0 ${W} ${H}" width="100%" style="display:block;touch-action:pan-y">`;
     [0, 600, 1200, 1800, 2400].concat(end > 2400 ? [end] : []).forEach(q => svg += `<line x1="${x(q)}" x2="${x(q)}" y1="6" y2="${H - 4}" class="gl"/>`);
     ["Q1", "Q2", "Q3", "Q4"].forEach((q, i) => svg += `<text x="${(x(i * 600) + x(i * 600 + 600)) / 2}" y="${6 + lineH + 15}" text-anchor="middle" class="ax">${q}</text>`);
@@ -1253,10 +1282,14 @@ function hRank(vals, code, m, side){
 }
 const hGrade = r => r <= 4 ? 2 : r <= 8 ? 1 : r <= 12 ? 0 : r <= 16 ? -1 : -2;
 const hDir = (m, side) => m.hi === null ? 1 : side === "o" ? (m.hi ? 1 : -1) : (m.hi ? -1 : 1);
+function ddWrap(sel, cls){
+  const lab = h("span", {class: "ddl " + cls, "aria-hidden": "true"}, h("span", {text: sel.options[sel.selectedIndex] ? sel.options[sel.selectedIndex].text : ""}), h("i", {class: "ddtri"}));
+  return h("span", {class: "ddw"}, lab, sel);
+}
 function homeIcon(){ const s = document.createElementNS("http://www.w3.org/2000/svg", "svg"); s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("aria-hidden", "true");
   s.innerHTML = '<path d="M3 11.5 12 4l9 7.5M5.5 9.8V20h4.8v-5.5h3.4V20h4.8V9.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'; return s; }
 function goHome(){ st.page = "home"; st.detail = null; render(); scrollTo(0, 0); }
-const homeBtn = () => h("button", {class: "homeb", "aria-label": "Home", title: "Home", onclick: goHome}, homeIcon());
+const homeBtn = () => h("span", {class: "hwrap"}, h("button", {class: "homeb", "aria-label": "Home", title: "Home", onclick: goHome}, homeIcon()), h("span", {class: "beta", title: "Work in progress", text: "beta"}));
 function backToTop(){ const fh = st.detail && st.detail.fromHome; st.detail = null; if (fh) st.page = "home"; render(); scrollTo(0, 0); }
 const topLabel = () => st.detail && st.detail.fromHome ? "‹ Home" : "‹ Summary";
 const homeStanding = code => { const w = T[code].w, above = teams.filter(t => t.w > w).length, tied = teams.filter(t => t.w === w).length; return (tied > 1 ? "tied " : "") + ord(above + 1); };
@@ -1291,7 +1324,7 @@ function homeView(){
   const perSel = h("select", {class: "persel", "aria-label": "Period", onchange: e => { st.period = e.target.value; render(); }},
     PERIODS.map(p => { const o = h("option", {value: p.id, text: p.label}); if (p.id === st.period) o.selected = true; return o; }));
   const bar = h("div", {class: "frozen"}, h("header", {class: "bar"},
-    h("div", {class: "hrow"}, homeBtn(), h("div", {class: "httl"}, teamSel, h("small", {text: `EuroLeague ${META.season.slice(1)}-${(+META.season.slice(1) + 1) % 100}`})),
+    h("div", {class: "hrow"}, homeBtn(), h("div", {class: "httl"}, ddWrap(teamSel, "ddteam"), h("small", {text: `EuroLeague ${META.season.slice(1)}-${(+META.season.slice(1) + 1) % 100}`})),
       h("div", {class: "hrec"}, h("b", {text: `${TT.w}–${TT.l}`}), h("span", {text: homeStanding(code) + " of 20"}))),
     h("div", {class: "hctrl"}, perSel, h("button", {class: "hcmp", onclick: () => { st.page = "compare"; st.detail = null; if (code !== DUB){ st.opp = code; st.liveGc = null; } render(); scrollTo(0, 0); }, text: "Compare ›"}))));
 
@@ -1360,15 +1393,18 @@ function homeView(){
       h("span", null, h("i", {style: "width:11px;height:11px;border-radius:50%;border:2px solid var(--ink)"}), "last game"),
       h("span", null, h("i", {style: "width:2px;height:12px;background:var(--ink)"}), `${TT.name} period average`),
       h("span", null, h("i", {style: "width:0;height:12px;border-left:1.5px dashed var(--muted)"}), "EL average")),
-    h("p", {class: "foot", text: `Each strip runs from the league’s worst game in the period (left) to its best (right); for pace, slowest to fastest. Hover over a dot to see the game; tap it to open that game. Tap a row for that KPI’s season tab. EuroLeague data through Round ${META.through_round}, updated ${fmtWhen(META.updated)}.`}),
+    h("p", {class: "foot", text: `Each strip runs from the league’s worst game in the period (left) to its best (right); for pace, slowest to fastest. Hover over a dot to see the game; tap it for the result, then tap the label to open that game. Tap a row for that KPI’s season tab. EuroLeague data through Round ${META.through_round}, updated ${fmtWhen(META.updated)}.`}),
     h("p", {class: "foot", style: "padding-top:0"}, h("button", {class: "mlink", onclick: () => { st.detail = {method: true, fromHome: true}; render(); scrollTo(0, 0); }, text: "How these numbers are calculated"})));
 }
+function closePops(){ document.querySelectorAll(".dpop").forEach(p => p.remove()); }
+document.addEventListener("click", e => { if (!e.target.closest || !e.target.closest(".dpop, .gstrip")) closePops(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closePops(); });
 // a KPI row's strip: every team-game in the period; ends = league worst and best; the team's games coloured v the EL average
 function homeStrip(code, m, s, P, lgv, pv, dir, lv, last, fm){
   const pts = [];
   teams.forEach(t => P.f(HG[t.code]).forEach(g => { const v = hOne(g, s)[m.k]; if (v == null) return;
-    pts.push({v, mine: t.code === code, last: t.code === code && g === last, team: t.code, round: g.r, lab: `R${g.r} ${t.name} ${g.home ? "v" : "at"} ${T[g.opp].name}`}); }));
-  if (!pts.some(p => p.last)) pts.push({v: lv, mine: true, last: true, team: code, round: last.r, lab: `R${last.r} ${T[code].name} ${last.home ? "v" : "at"} ${T[last.opp].name} (outside period)`});
+    pts.push({v, mine: t.code === code, last: t.code === code && g === last, team: t.code, round: g.r, win: g.win, score: g.score, lab: `R${g.r} ${t.name} ${g.home ? "v" : "at"} ${T[g.opp].name}`}); }));
+  if (!pts.some(p => p.last)) pts.push({v: lv, mine: true, last: true, team: code, round: last.r, win: last.win, score: last.score, lab: `R${last.r} ${T[code].name} ${last.home ? "v" : "at"} ${T[last.opp].name} (outside period)`});
   const W = 320, H = 40, pad = 10, Y = 14, lo = Math.min(...pts.map(p => p.v)), hi = Math.max(...pts.map(p => p.v)), span = (hi - lo) || 1;
   const x = v => dir > 0 ? pad + (W - 2 * pad) * (v - lo) / span : W - pad - (W - 2 * pad) * (v - lo) / span;
   let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Every game in the period"><line class="ax" x1="${pad}" x2="${W - pad}" y1="${Y}" y2="${Y}"/>`;
@@ -1388,7 +1424,19 @@ function homeStrip(code, m, s, P, lgv, pv, dir, lv, last, fm){
   const show = p => { hl.setAttribute("x1", x(p.v)); hl.setAttribute("x2", x(p.v)); hl.style.display = ""; const rd = box.parentNode && box.parentNode.querySelector(".rd"); if (rd) rd.textContent = `${p.lab}: ${fm(p.v)}`; };
   el.addEventListener("pointermove", ev => { if (ev.pointerType !== "mouse") return; const p = pick(ev); if (p) show(p); });
   el.addEventListener("pointerleave", () => { hl.style.display = "none"; const rd = box.parentNode && box.parentNode.querySelector(".rd"); if (rd) rd.textContent = rd.dataset.def; });
-  el.addEventListener("click", ev => { const p = pick(ev); if (!p) return; ev.stopPropagation(); show(p); homeOpenGame(p.team, p.round, s, m.k); }); // a tap away from any dot opens the row's season tab
+  // tap a dot: a small label with the result; tap the label to open that game. Tap off the dots to close it.
+  el.addEventListener("click", ev => {
+    const p = pick(ev), open = document.querySelector(".dpop");
+    if (!p){ if (open){ ev.stopPropagation(); closePops(); } return; } // no dot here: close a label, or fall through to the row's season tab
+    ev.stopPropagation(); show(p); closePops();
+    const pop = h("button", {class: "dpop", "aria-label": `${p.lab}, ${p.win ? "won" : "lost"} ${p.score}. Open this game`},
+      h("b", {text: p.lab}), h("span", {text: `${p.win ? "W" : "L"} ${p.score} · ${ABBR[m.k]} ${fm(p.v)}`}), h("span", {class: "dgo", text: "Open game ›"}));
+    pop.addEventListener("click", e => { e.stopPropagation(); closePops(); homeOpenGame(p.team, p.round, s, m.k); });
+    box.append(pop);
+    const bw = box.clientWidth, pw = pop.offsetWidth, dx = x(p.v) / W * bw, left = Math.max(0, Math.min(bw - pw, dx - pw / 2));
+    pop.style.left = left + "px"; pop.style.setProperty("--ax", Math.max(10, Math.min(pw - 10, dx - left)) + "px");
+    pop.focus({preventScroll: true});
+  });
   return box;
 }
 
