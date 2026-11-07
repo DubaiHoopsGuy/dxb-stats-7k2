@@ -43,14 +43,22 @@ def nice(name):
     return " ".join(cap(w) for w in name.split())
 
 
+CLOCK_RE = re.compile(r"^\s*(\d{1,2}):(\d{2})")
+
+
 def clock(period_index, marker):
-    """Elapsed game seconds from period (0-based) and the remaining-time marker 'mm:ss'."""
+    """Elapsed game seconds from period (0-based) and the remaining-time marker 'mm:ss'.
+    Returns None for the time when the marker is missing or damaged (the feed sometimes sends
+    values like '24.0' or garbled bytes); the caller then uses the last good time in the period."""
     length = 600 if period_index < 4 else 300
     base = period_index * 600 if period_index < 4 else 2400 + (period_index - 4) * 300
-    if not marker:
+    m = CLOCK_RE.match(marker or "")
+    if not m:
         return None, base, length
-    m, s = marker.split(":")
-    return base + length - (int(m) * 60 + int(s)), base, length
+    secs = int(m.group(1)) * 60 + int(m.group(2))
+    if secs > length:
+        return None, base, length
+    return base + length - secs, base, length
 
 
 def drop_empty(ev, cur):
@@ -78,17 +86,34 @@ def parse_game(b):
     scp_plays = {r["NUM_ANOT"] for r in b["points"]["Rows"] if r["SECOND_CHANCE"] == "1"}
 
     # flatten play-by-play with elapsed time
-    raw, end = [], 2400
+    raw, end, bad_clock = [], 2400, [0]
     for qi, key in enumerate(PERIODS):
         rows = p.get(key) or []
         if key == "ExtraTime" and rows:
             # extra periods are listed together; split on Begin Period markers
             pass
-        for e in sorted(rows, key=lambda r: r["NUMBEROFPLAY"]):
-            t, base, length = clock(qi, e["MARKERTIME"])
+        ordered = sorted(rows, key=lambda r: r["NUMBEROFPLAY"])
+        times = [clock(qi, e["MARKERTIME"])[0] for e in ordered]
+        _, base, length = clock(qi, None)
+        # damaged or missing clock values: spread them evenly between the good times either side
+        i = 0
+        while i < len(times):
+            if times[i] is not None:
+                i += 1; continue
+            j = i
+            while j < len(times) and times[j] is None:
+                j += 1
+            prev = times[i - 1] if i > 0 else base
+            nxt = times[j] if j < len(times) else prev
+            for k in range(i, j):
+                times[k] = round(prev + (nxt - prev) * (k - i + 1) / (j - i + 1)) if nxt >= prev else prev
+                if ordered[k]["MARKERTIME"] and ordered[k]["PLAYTYPE"] not in ("BP", "EP", "EG"):
+                    bad_clock[0] += 1
+            i = j
+        for e, t in zip(ordered, times):
             if key == "ExtraTime":
                 end = max(end, base + length)
-            raw.append(dict(t=t if t is not None else base, typ=e["PLAYTYPE"], team=(e["CODETEAM"] or "").strip(),
+            raw.append(dict(t=t, typ=e["PLAYTYPE"], team=(e["CODETEAM"] or "").strip(),
                             pid=(e["PLAYER_ID"] or "").strip(), num=e["NUMBEROFPLAY"], period=qi))
 
     # on-court tracking for stints
@@ -177,7 +202,7 @@ def parse_game(b):
         if z > a:
             st[c].append({"p": names.get(pid, pid), "a": a, "b": z})
     pts = {c: int(box[c]["totr"]["Points"]) for c in (A, B)}
-    return dict(A=A, B=B, end=end, ev=ev, stints=st, pts=pts, minutes={names[k]: v for k, v in minutes.items() if v},
+    return dict(A=A, B=B, end=end, ev=ev, stints=st, pts=pts, bad_clock=bad_clock[0], minutes={names[k]: v for k, v in minutes.items() if v},
                 team_of={names[k]: v for k, v in team_of.items()}, scp=scp_count)
 
 
@@ -261,8 +286,14 @@ def main():
     for g in played:
         gc = g["gameCode"]
         fn = os.path.join(SRC, f"b{gc}.json.gz")
-        b = json.load(gzip.open(fn, "rt", encoding="utf-8")) if os.path.exists(fn) else json.load(open(os.path.join(SRC, f"b{gc}.json")))
-        G = parse_game(b)
+        try:
+            b = json.load(gzip.open(fn, "rt", encoding="utf-8")) if os.path.exists(fn) else json.load(open(os.path.join(SRC, f"b{gc}.json")))
+            G = parse_game(b)
+        except Exception as err:  # skip a game we can't read, say so, and carry on with the rest
+            flagged.append({"game": gc, "round": g["round"], "skipped": f"{type(err).__name__}: {err}"[:200]})
+            continue
+        if G.get("bad_clock"):
+            flagged.append({"game": gc, "round": g["round"], "clock_values_repaired": G["bad_clock"]})
         A, B = G["A"], G["B"]
         pa = sum(1 for e in G["ev"][A] if e["type"] == "P"); pb = sum(1 for e in G["ev"][B] if e["type"] == "P")
         if abs(pa - pb) > 2:
