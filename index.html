@@ -322,6 +322,9 @@ const KPIS = [
 
 // ---------- data: EuroLeague Media Game Center, built by the data pipeline ----------
 const DUB = "DUB";
+// display codes (official EuroLeague codes stay in the data): Anadolu Efes, Fenerbahce, Maccabi, Partizan, Real Madrid, Valencia, Bayern, Crvena Zvezda
+const DISP = {IST: "EFS", ULK: "FEN", TEL: "MTA", PAR: "PZN", MAD: "RMA", PAM: "VAL", MUN: "BAY", RED: "CZV"};
+const DC = c => DISP[c] || c;
 const teams = DATA.teams.map(t => ({code: t.code, name: t.name, full: t.full, w: t.w, l: t.l, off: t.off, def: t.def, cx: t.cx,
   players: t.players, roster: t.players.map(p => p.name), games: t.games.map(g => ({...g, oppCode: g.opp}))}));
 const T = Object.fromEntries(teams.map(t => [t.code, t]));
@@ -690,7 +693,7 @@ function topBar(){
       h("div", {class: "state"}, live
         ? (LG ? [h("b", {text: `${ptsOf(LG.dub)}–${ptsOf(LG.opp)}`}), h("span", null, feedLive(LG) ? h("i", {class: "live-dot", "aria-hidden": "true"}) : null, LG.final ? "Final" : clk(LG.end)), feedLive(LG) && LIVE_AT ? h("span", {class: "agev", style: "display:block", text: liveAge()}) : null]
               : [h("b", {text: "–"}), h("span", {text: "Not played"})])
-        : [h("b", {text: `${T[DUB].w}–${T[DUB].l}`}), h("span", {text: `${O.code} ${O.w}–${O.l}`})])),
+        : [h("b", {text: `${T[DUB].w}–${T[DUB].l}`}), h("span", {text: `${DC(O.code)} ${O.w}–${O.l}`})])),
     !live && NEXT && NEXT.code === st.opp ? h("div", {class: "nextl", text: `Next game: ${fmtWhen(NEXT.date)} (Dubai time), ${NEXT.home === DUB ? "home" : "away"}`}) : null,
     live && MS.length > 1 ? h("div", {class: "meets", role: "group", "aria-label": "Game"}, MS.map(g => h("button", {"aria-pressed": String(MT && g.gc === MT.gc), onclick: () => { st.liveGc = g.gc; render(); pollLive(); },
       text: `R${g.round} ${g.home === DUB ? "home" : "away"} · ${g.played ? "played" : fmtWhen(g.date).split(" ").slice(0, 3).join(" ")}`}))) : null,
@@ -717,8 +720,8 @@ function summary(){
   const grid = h("div", {class: "grid", role: "table", "aria-label": "Key numbers"});
   const heads = h("div", {class: "grid heads"},
     h("div", {class: "gh o", text: "Offense"}), h("div", {class: "gap"}), h("div", {class: "gh d", text: "Defense"}),
-    h("div", {class: "ch", text: live ? "Dubai " + liveWord() : "Dubai"}), h("div", {class: "ch", text: `${oc} allows`}), h("div", {class: "gap"}),
-    h("div", {class: "ch", text: live ? `${oc} ${liveWord()}` : oc}), h("div", {class: "ch", text: "Dubai allows"}));
+    h("div", {class: "ch", text: live ? "Dubai " + liveWord() : "Dubai"}), h("div", {class: "ch", text: `${DC(oc)} allows`}), h("div", {class: "gap"}),
+    h("div", {class: "ch", text: live ? `${DC(oc)} ${liveWord()}` : DC(oc)}), h("div", {class: "ch", text: "Dubai allows"}));
   const flags = [];
   KPIS.forEach(m => {
     grid.append(h("div", {class: "rl", text: m.label}));
@@ -740,14 +743,14 @@ function summary(){
         g = "flat";
       } else g = gradeRank(r, col, m);
       const cls = g === "flat" ? "tile flat" : g == null ? "tile t0" : "tile t" + g;
-      const who = col === 0 ? "Dubai offense" : col === 1 ? `${oc} defense` : col === 2 ? `${oc} offense` : "Dubai defense";
+      const who = col === 0 ? "Dubai offense" : col === 1 ? `${DC(oc)} defense` : col === 2 ? `${DC(oc)} offense` : "Dubai defense";
       grid.append(h("button", {class: cls, "aria-label": `${m.label}, ${who}: ${m.fmt(val)}, ${sub}`, onclick: () => { st.detail = live ? {k: m.k, col, live: true} : {k: m.k, col}; render(); scrollTo(0, 0); }},
         h("span", {class: "v", text: live && m.k === "scp" && (col === 0 || col === 2) ? String(val) : m.fmt(val)}), h("span", {class: "r", text: sub})));
     });
   });
   flags.sort((a, b) => a.g - b.g);
   const alert = live ? (flags.length
-    ? h("div", {class: "alert", role: "status"}, h("span", {"aria-hidden": "true", text: "⚠"}), "Watch: " + flags.slice(0, 3).map(f => (f.col === 0 ? "our " : `${oc} `) + f.m.label.replace(/ \(.*\)/, "").toLowerCase()).join(", "))
+    ? h("div", {class: "alert", role: "status"}, h("span", {"aria-hidden": "true", text: "⚠"}), "Watch: " + flags.slice(0, 3).map(f => (f.col === 0 ? "our " : `${DC(oc)} `) + f.m.label.replace(/ \(.*\)/, "").toLowerCase()).join(", "))
     : h("div", {class: "alert ok", role: "status"}, h("span", {"aria-hidden": "true", text: "✓"}), "Nothing below par right now")) : null;
   return h("div", null, h("div", {class: "frozen"}, topBar(), alert), insightBox(summaryInsights(oc, live)), h("div", {class: "frozen hsticky"}, heads), grid,
     h("div", {class: "key"}, "Bad for Dubai", ["t-2","t-1","t0","t1","t2"].map(c => h("i", {class: c})), "Good for Dubai"),
@@ -779,7 +782,7 @@ function methodScreen(){
     h("p", {class: "foot", style: "margin-top:14px", text: "Other sites estimate possessions with a formula, so their ratings can differ by a point or two."}));
 }
 
-function colsFor(oc){ return [{code: DUB, side: "off", name: "Dubai", long: "Dubai offense"}, {code: oc, side: "def", name: `${oc} allows`, long: `${T[oc].name} defense`}, {code: oc, side: "off", name: oc, long: `${T[oc].name} offense`}, {code: DUB, side: "def", name: "Dubai allows", long: "Dubai defense"}]; }
+function colsFor(oc){ return [{code: DUB, side: "off", name: "Dubai", long: "Dubai offense"}, {code: oc, side: "def", name: `${DC(oc)} allows`, long: `${T[oc].name} defense`}, {code: oc, side: "off", name: DC(oc), long: `${T[oc].name} offense`}, {code: DUB, side: "def", name: "Dubai allows", long: "Dubai defense"}]; }
 function barsChart(items, fmt, refs, onPick){
   const hasM = items.some(i => i.mg != null);
   const W = Math.max(300, Math.min(600, (app.clientWidth || 600) - 40)), H = 190, top = 20, bot = 36, PW = hasM ? W - 30 : W;
@@ -827,7 +830,7 @@ function ortgGames(t, C, col, oc){
   const box = h("div", {class: "card"}), sec = h("div", {class: "sec"}, h("h3", {text: "Game by game"}), box);
   function draw(){
     box.replaceChildren(
-      barsChart(t.games.map((g, i) => ({label: "R" + g.round, mg: marginOf(g), sub: (g.win ? "W " : "L ") + (g.oppCode || g.opp.slice(0, 3).toUpperCase()), value: g[C.side].ortg, sel: i === sel, cls: "f" + (gradeVs(g[C.side].ortg, lgAvg, col, m) ?? "N")})), m.fmt, [{v: lgAvg}], i => { sel = i; st.detail.sel = i; draw(); }),
+      barsChart(t.games.map((g, i) => ({label: "R" + g.round, mg: marginOf(g), sub: (g.win ? "W " : "L ") + (g.oppCode ? DC(g.oppCode) : g.opp.slice(0, 3).toUpperCase()), value: g[C.side].ortg, sel: i === sel, cls: "f" + (gradeVs(g[C.side].ortg, lgAvg, col, m) ?? "N")})), m.fmt, [{v: lgAvg}], i => { sel = i; st.detail.sel = i; draw(); }),
       legendLines([{label: "League average", txt: m.fmt(lgAvg)}]),
       h("div", {class: "note", text: "Tap a bar to change the game below."}),
       gamePanel(t.games[sel], C, col, oc));
@@ -856,7 +859,7 @@ function fourFactors(C, col){
 function gamePanel(g, C, col, oc){
   const F = ["ortg", "pace", "efg", "tov", "orb", "ftr"].map(k => KPIS.find(x => x.k === k));
   const oside = C.side === "off" ? "def" : "off", ocol = [3, 2, 1, 0][col];
-  const team = C.code === DUB ? "DUB" : oc;
+  const team = C.code === DUB ? "DUB" : DC(oc);
   const mainLab = C.side === "off" ? team : "Opp", otherLab = C.side === "off" ? "Opp" : team;
   const dub = col === 0 || col === 3;
   const res = g.score ? `${g.win ? "Won" : "Lost"} ${g.score}` : g.win ? "Won" : "Lost";
@@ -947,7 +950,7 @@ function gameScreen(){
   const go = patch => { st.detail = Object.assign({}, st.detail, patch); render(); scrollTo(0, 0); };
   const back = () => { if (!from) return backToTop(); st.detail = {k: from, col, sel: gi >= 0 ? gi : undefined, fromHome: st.detail.fromHome}; render(); scrollTo(0, 0); };
   const backLab = from ? (from === "ortg" ? "‹ ORTG – SEASON" : `‹ ${ABBR[from]} – ${live ? "LIVE" : "SEASON"}`) : topLabel();
-  const whoTitle = [``, ` (${oc} allows)`, ` (${oc})`, ` (Dubai allows)`][col];
+  const whoTitle = [``, ` (${DC(oc)} allows)`, ` (${DC(oc)})`, ` (Dubai allows)`][col];
   const head = h("div", {class: "frozen"},
     h("header", {class: "bar dbar"},
       h("div", {class: "navr"}, h("button", {class: "back", onclick: back, text: backLab}), homeBtn()),
@@ -967,7 +970,7 @@ function gameScreen(){
   const hero = h("div", {class: "sec g2"},
     h("div", {class: "tile t" + (gradeVs(value, ref, col, m) ?? 0)}, h("span", {class: "r", text: teamLab}), h("span", {class: "v", text: fmtV(value)})),
     h("div", {class: "tile flat"}, h("span", {class: "r", text: k === "scp" ? (live ? "EL avg by now" : "EL avg") : "EL avg"}), h("span", {class: "v", text: fmtV(lg * scale)}),
-      h("span", {class: "r", text: `${Opp.code} ${side === "off" ? "allows" : "avg"} ${fmtV(oppRef * scale)}`})));
+      h("span", {class: "r", text: `${DC(Opp.code)} ${side === "off" ? "allows" : "avg"} ${fmtV(oppRef * scale)}`})));
 
   // lanes: this team's players
   const S = G.stints, players = [...new Set(S.map(s => s.p))];
@@ -1168,7 +1171,7 @@ function gameScreen(){
   drawTable();
   const tTitle = `${isDub ? "Dubai" : team.name} players${side === "def" ? " on defense" : ""}`;
   const ptable = h("div", {class: "sec"}, h("h3", {text: tTitle}), h("div", {class: "card tscroll"}, tbl));
-  const insights = insightBox(gameInsights(k, m, col, C, G, side, ev, value, ref, st.ref === "opp" ? `${Opp.code} ${side === "off" ? "allows" : "avg"}` : "EL avg", end, fmtV, isDub, players));
+  const insights = insightBox(gameInsights(k, m, col, C, G, side, ev, value, ref, st.ref === "opp" ? `${DC(Opp.code)} ${side === "off" ? "allows" : "avg"}` : "EL avg", end, fmtV, isDub, players));
   return h("div", null, head, insights, hero, h("div", {class: "sec"}, card), ptable,
     h("p", {class: "foot", style: "margin-top:12px", text: live ? "Drag across the chart or tap a bar. " + liveNote() : "Drag across the chart or tap a bar. EuroLeague play-by-play."}));
 }
@@ -1184,7 +1187,7 @@ function summaryInsights(oc, live){
   if (live){
     const L = liveFor(oc), O = T[oc], D = T[DUB], good = [];
     KPIS.filter(m => m.hi !== null).forEach(m => {
-      [[0, L.dub[m.k], O.def[m.k], "our"], [2, L.opp[m.k], D.def[m.k], oc]].forEach(([col, v, ref, who]) => {
+      [[0, L.dub[m.k], O.def[m.k], "our"], [2, L.opp[m.k], D.def[m.k], DC(oc)]].forEach(([col, v, ref, who]) => {
         if (m.k === "scp") ref *= ELAPSED;
         const g = gradeVs(v, ref, col, m); if (g > 0) good.push({g, t: `${who} ${ABBR[m.k]} ${m.k === "scp" ? Math.round(v) : m.fmt(v)} (usual ${m.k === "scp" ? ref.toFixed(1) : m.fmt(ref)})`});
       });
@@ -1203,10 +1206,10 @@ function summaryInsights(oc, live){
     if (a <= 8 && b >= 13 && (!edge || b - a > edge.s)) edge = {s: b - a, t: `${ABBR[m.k]} (us ${ord(a)}, their D ${ord(b)})`};
     if (c <= 8 && d >= 13 && (!threat || d - c > threat.s)) threat = {s: d - c, t: `${ABBR[m.k]} (them ${ord(c)}, our D ${ord(d)})`};
   });
-  out.push({g: null, t: `v ${oc}: ` + [edge ? "edge in " + edge.t : null, threat ? "watch " + threat.t : null].filter(Boolean).join("; ") || `v ${oc}: no big mismatches`});
+  out.push({g: null, t: `v ${DC(oc)}: ` + [edge ? "edge in " + edge.t : null, threat ? "watch " + threat.t : null].filter(Boolean).join("; ") || `v ${DC(oc)}: no big mismatches`});
   return out;
 }
-const WHO = (col, oc) => ["Dubai", `${oc} allows`, oc, "Dubai allows"][col];
+const WHO = (col, oc) => ["Dubai", `${DC(oc)} allows`, DC(oc), "Dubai allows"][col];
 function seasonInsights(C, col, k, m, oc){
   const t = T[C.code], v = t[C.side][k], lg = leagueAvg(C.side, k), r = rank(C.code, C.side, m), f = x => k === "scp" ? x.toFixed(1) : m.fmt(x);
   const vals = t.games.map(g => g[C.side][k]), out = [];
@@ -1468,7 +1471,7 @@ function detail(){
   }
   const hero = h("div", {class: "sec hero"},
     h("div", {class: "tile " + (heroG == null ? "t0" : "t" + heroG)},
-      h("span", {class: "r", text: live ? C.name + " " + liveWord() : k === "ortg" ? [`Dubai ORTG`, `${oc} ORTG allowed`, `${oc} ORTG`, `Dubai ORTG allowed`][col] : C.long}),
+      h("span", {class: "r", text: live ? C.name + " " + liveWord() : k === "ortg" ? [`Dubai ORTG`, `${DC(oc)} ORTG allowed`, `${DC(oc)} ORTG`, `Dubai ORTG allowed`][col] : C.long}),
       h("span", {class: "v", text: live && k === "scp" ? String(heroVal) : m.fmt(heroVal)}),
       h("span", {class: "r", text: heroSub})),
     h("div", {class: "refs"},
@@ -1497,7 +1500,7 @@ function detail(){
     const readout = h("div", {class: "readout", text: "Tap a bar to open that game."});
     const gl = t.games.map(g => ({g, v: g[C.side][k]}));
     out.push(h("div", {class: "sec"}, h("h3", {text: "Game by game"}), h("div", {class: "card"},
-      barsChart(gl.map(({g, v}) => ({label: "R" + g.round, mg: marginOf(g), sub: (g.win ? "W " : "L ") + (g.oppCode || g.opp.slice(0, 3).toUpperCase()), value: v, cls: "f" + (gradeVs(v, lgAvg, col, m) ?? "N")})), m.fmt, [{v: lgAvg}],
+      barsChart(gl.map(({g, v}) => ({label: "R" + g.round, mg: marginOf(g), sub: (g.win ? "W " : "L ") + (g.oppCode ? DC(g.oppCode) : g.opp.slice(0, 3).toUpperCase()), value: v, cls: "f" + (gradeVs(v, lgAvg, col, m) ?? "N")})), m.fmt, [{v: lgAvg}],
         i => { st.detail = {k, col, round: gl[i].g.round, sel: i, from: k, fromHome: st.detail.fromHome}; render(); scrollTo(0, 0); }),
       legendLines([{label: "League average", txt: m.fmt(lgAvg)}]), readout)));
 
