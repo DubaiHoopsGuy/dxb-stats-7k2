@@ -12,7 +12,7 @@ Method (shown on the tool's Method page):
 - Team rebounds and team turnovers are included.
 - League averages are pooled from season totals.
 """
-import json, os, re, sys, gzip, datetime, collections
+import json, os, re, sys, gzip, math, datetime, collections
 
 SEASON = os.environ.get("SEASON", "E2026")
 SRC = sys.argv[1] if len(sys.argv) > 1 else "."
@@ -61,6 +61,32 @@ def clock(period_index, marker):
     return base + length - secs, base, length
 
 
+LATE_SECS = 10
+
+
+def chrono(pairs):
+    """Put plays in game-clock order within a period.
+    Scorers sometimes enter a play minutes after it happened (e.g. a missed shot, block and rebound at 08:05
+    recorded after a timeout at 05:58). Any play whose clock is more than LATE_SECS earlier than the play
+    before it is moved back to where it happened, keeping its order among plays at the same time.
+    Smaller inversions (a few seconds of scorer timing) keep their place, but the clock never runs backwards."""
+    out = []
+    for e, t in pairs:
+        if out and t < out[-1][1] - LATE_SECS:
+            k = len(out)
+            while k > 0 and out[k - 1][1] > t:
+                k -= 1
+            out.insert(k, (e, t))
+        else:
+            out.append((e, t))
+    res, last = [], None
+    for e, t in out:
+        if last is not None and t < last:
+            t = last
+        res.append((e, t)); last = t
+    return res
+
+
 def drop_empty(ev, cur):
     """A possession that starts at the buzzer (e.g. a defensive rebound) and ends with the period,
     without a shot, free throw, turnover or rebound, is not counted."""
@@ -106,11 +132,11 @@ def parse_game(b):
             prev = times[i - 1] if i > 0 else base
             nxt = times[j] if j < len(times) else prev
             for k in range(i, j):
-                times[k] = round(prev + (nxt - prev) * (k - i + 1) / (j - i + 1)) if nxt >= prev else prev
+                times[k] = math.floor(prev + (nxt - prev) * (k - i + 1) / (j - i + 1) + 0.5) if nxt >= prev else prev  # round halves up, as the live code does
                 if ordered[k]["MARKERTIME"] and ordered[k]["PLAYTYPE"] not in ("BP", "EP", "EG"):
                     bad_clock[0] += 1
             i = j
-        for e, t in zip(ordered, times):
+        for e, t in chrono(list(zip(ordered, times))):
             if key == "ExtraTime":
                 end = max(end, base + length)
             raw.append(dict(t=t, typ=e["PLAYTYPE"], team=(e["CODETEAM"] or "").strip(),
@@ -296,7 +322,8 @@ def main():
             flagged.append({"game": gc, "round": g["round"], "clock_values_repaired": G["bad_clock"]})
         A, B = G["A"], G["B"]
         pa = sum(1 for e in G["ev"][A] if e["type"] == "P"); pb = sum(1 for e in G["ev"][B] if e["type"] == "P")
-        if abs(pa - pb) > 2:
+        ot_periods = max(0, (G["end"] - 2400) // 300)
+        if abs(pa - pb) > 2 + ot_periods:   # each overtime adds another period start
             flagged.append({"game": gc, "round": g["round"], "teams": f"{A}-{B}", "poss": [pa, pb]})
         # check points from events agree with the box score
         for c in (A, B):

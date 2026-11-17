@@ -520,6 +520,15 @@ const niceName = n => { if (!n) return null; if (n.includes(",")) { const [l, f]
     if (o.startsWith("Mc") && o.length > 2) o = "Mc" + o.charAt(2).toUpperCase() + o.slice(3);
     if (o.includes("'")) o = o.split("'").map(x => x.charAt(0).toUpperCase() + x.slice(1)).join("'");
     return o; }).join(" "); };
+// Scorers sometimes enter a play minutes after it happened. Within a period, a play whose clock is more than
+// 10 seconds earlier than the play before it is moved back to where it happened; smaller inversions keep their
+// place, and the clock never runs backwards. (Same rule as build_data.py.)
+function chronoRows(rows){
+  const out = [];
+  rows.forEach(r => { if (out.length && r.t < out[out.length - 1].t - 10){ let k = out.length; while (k > 0 && out[k - 1].t > r.t) k--; out.splice(k, 0, r); } else out.push(r); });
+  let last = null; out.forEach(r => { if (last != null && r.t < last) r.t = last; last = r.t; });
+  return out;
+}
 function parseBundle(b){
   const p = b.pbp; if (!p || !p.CodeTeamA) return null;
   const A = p.CodeTeamA.trim(), B = p.CodeTeamB.trim(), other = {[A]: B, [B]: A};
@@ -529,16 +538,23 @@ function parseBundle(b){
   const raw = []; let end = 0, final = false;
   PERIOD_KEYS.forEach((key, qi) => {
     const len = qi < 4 ? 600 : 300, base = qi < 4 ? qi * 600 : 2400 + (qi - 4) * 300;
-    let lastT = null;
-    (p[key] || []).slice().sort((x, y) => x.NUMBEROFPLAY - y.NUMBEROFPLAY).forEach(e => {
-      // the feed sometimes sends damaged clock values ("24.0", garbled bytes): use the last good time in the period
-      const mk = /^\s*(\d{1,2}):(\d{2})/.exec(e.MARKERTIME || ""), secs = mk ? +mk[1] * 60 + +mk[2] : null;
-      let t = secs != null && secs <= len ? base + len - secs : (lastT != null ? lastT : base);
-      lastT = t;
+    const ordered = (p[key] || []).slice().sort((x, y) => x.NUMBEROFPLAY - y.NUMBEROFPLAY), rows = [];
+    // clock values: good ones as elapsed seconds; damaged ones ("24.0", garbled bytes) spread evenly between the good times either side
+    const times = ordered.map(e => { const mk = /^\s*(\d{1,2}):(\d{2})/.exec(e.MARKERTIME || ""), secs = mk ? +mk[1] * 60 + +mk[2] : null; return secs != null && secs <= len ? base + len - secs : null; });
+    for (let i = 0; i < times.length;){
+      if (times[i] != null){ i++; continue; }
+      let j = i; while (j < times.length && times[j] == null) j++;
+      const prev = i > 0 ? times[i - 1] : base, nxt = j < times.length ? times[j] : prev;
+      for (let k = i; k < j; k++) times[k] = nxt >= prev ? Math.round(prev + (nxt - prev) * (k - i + 1) / (j - i + 1)) : prev;
+      i = j;
+    }
+    ordered.forEach((e, n) => {
+      const t = times[n];
       if (e.PLAYTYPE === "EG") final = true;
       if (e.PLAYTYPE !== "BP") end = Math.max(end, t);
-      raw.push({t, typ: e.PLAYTYPE, team: (e.CODETEAM || "").trim(), pid: (e.PLAYER_ID || "").trim(), num: e.NUMBEROFPLAY, period: qi});
+      rows.push({t, typ: e.PLAYTYPE, team: (e.CODETEAM || "").trim(), pid: (e.PLAYER_ID || "").trim(), num: e.NUMBEROFPLAY, period: qi});
     });
+    raw.push(...chronoRows(rows));
   });
   if (final) end = end > 2400 ? 2400 + Math.ceil((end - 2400) / 300) * 300 : 2400;
   const on = {[A]: new Set(starters[A]), [B]: new Set(starters[B])}, start = {}, stints = [];
